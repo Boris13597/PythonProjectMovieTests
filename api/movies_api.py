@@ -20,7 +20,7 @@ class MoviesAPI(BaseAPI):
         )
         return response.json()
 
-    def create_movie(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def create_movie(self, data: Dict[str, Any], expected_status=HTTPStatus.CREATED) -> Dict[str, Any]:
         """
         POST /movies - Создание фильма.
         """
@@ -28,7 +28,7 @@ class MoviesAPI(BaseAPI):
             "POST",
             "movies",  # Без слэша
             data=data,
-            expected_status=HTTPStatus.CREATED
+            expected_status=expected_status
         )
         return response.json()
 
@@ -43,14 +43,12 @@ class MoviesAPI(BaseAPI):
         )
         return response.json()
 
-    def delete_movie(self, movie_id: int) -> Dict[str, Any]:
-        """
-        DELETE /movies/{id} - Удаление фильма.
-        """
+    def delete_movie(self, movie_id: int, expected_status: int = HTTPStatus.OK) -> Dict[str, Any]:
+
         response = self.requester.send_request(
             "DELETE",
-            f"movies/{movie_id}",  # Без слэша
-            expected_status=HTTPStatus.OK
+            f"movies/{movie_id}",
+            expected_status=expected_status
         )
         return response.json()
 

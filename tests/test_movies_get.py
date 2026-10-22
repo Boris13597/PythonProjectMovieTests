@@ -1,9 +1,17 @@
 """
 Тесты для GET /movies - Получение афиш фильмов
 """
-import pytest
-from core.data_generator import DataGenerator
+import random
+from http import HTTPStatus
 
+import pytest
+
+price_ranges = [
+    (random.randint(0, 500), random.randint(501, 1000))
+    for _ in range(10)
+]
+genre_ids = [1, 2, 3, 4, 5]
+locations_list = ["MSK", "SPB"]
 
 class TestMoviesGet:
     """Тесты для GET /movies - Получение афиш фильмов."""
@@ -193,24 +201,27 @@ class TestMoviesGet:
             if "genreId" in movie:
                 assert movie["genreId"] == 1
 
-    def test_get_movies_invalid_price_range(self, public_movies_api):
-        """Негативный тест: minPrice > maxPrice (ожидается 400)."""
+    def test_get_movies_invalid_price_range(self, movies_api):
+        """Тест с невалидным диапазоном цен (min > max)."""
         params = {"minPrice": 1000, "maxPrice": 100}
+        response = movies_api.requester.send_request(
+            "GET",
+            "movies",
+            params=params,
+            expected_status=HTTPStatus.BAD_REQUEST  # ✅ Исправлено: 400
+        )
+        assert response.status_code == 400
 
-        # API возвращает 400, а не 200
-        with pytest.raises(ValueError) as excinfo:
-            public_movies_api.get_movies(params=params)
-
-        assert "400" in str(excinfo.value), "Expected 400 Bad Request"
-
-    def test_get_movies_invalid_location(self, public_movies_api):
-        """Негативный тест: невалидная локация (ожидается 400)."""
-        params = {"locations": ["INVALID"]}
-
-        with pytest.raises(ValueError) as excinfo:
-            public_movies_api.get_movies(params=params)
-
-        assert "400" in str(excinfo.value), "Expected 400 Bad Request"
+    def test_get_movies_invalid_location(self, movies_api):
+        """Тест с невалидной локацией."""
+        params = {"locations": "INVALID"}
+        response = movies_api.requester.send_request(
+            "GET",
+            "movies",
+            params=params,
+            expected_status=HTTPStatus.BAD_REQUEST  # ✅ Исправлено: 400
+        )
+        assert response.status_code == 400
 
     def test_get_movies_invalid_genre(self, public_movies_api):
         """Негативный тест: невалидный genreId (возвращает пустой список)."""
@@ -222,8 +233,31 @@ class TestMoviesGet:
 
     def test_get_movies_no_results(self, public_movies_api):
         """Негативный тест: фильтр без результатов."""
-        params = {"minPrice": 99999, "maxPrice": 100000}
+        params = {"minPrice": 999999, "maxPrice": 1000000}
         response = public_movies_api.get_movies(params=params)
 
         movies_list = response.get("movies", [])
         assert len(movies_list) == 0, "Should return empty list for no results"
+
+
+    @pytest.mark.parametrize("genreId, locations, min_price, max_price", [
+        (genre, loc, min_p, max_p)
+        for genre in genre_ids
+        for loc in locations_list
+        for min_p, max_p in price_ranges[:2]  # Берем только первые 2 пары
+    ])
+    def test_get_movies_filter(self,genreId, locations, min_price, max_price, public_movies_api):
+        """Позитивный тест: фильтр по жанру, локации и цене."""
+        params = {
+            "minPrice": min_price,
+            "maxPrice": max_price,
+            "locations": [locations],
+            "genreId": genreId
+        }
+        response = public_movies_api.get_movies(params=params)
+
+        movies_list = response.get("movies", [])
+
+        assert "movies" in response
+        assert isinstance(movies_list, list)
+

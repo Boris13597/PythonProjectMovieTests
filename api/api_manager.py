@@ -35,3 +35,6 @@ class ApiManager:
     def get_requester(self):
         """Возвращает текущий реквестер для кастомизации."""
         return self.requester
+
+    def close_session(self):
+        self.session.close()

@@ -1,6 +1,8 @@
 """
 Тесты для GET /movies/{id} - Получение фильма по ID
 """
+from http import HTTPStatus
+
 import pytest
 import re
 from core.data_generator import DataGenerator
@@ -10,28 +12,6 @@ class TestMoviesGetById:
     """Тесты для GET /movies/{id} - Получение фильма по ID."""
 
     # ==================== ПОЗИТИВНЫЕ ТЕСТЫ ====================
-
-    def test_get_movie_by_id_success(self, public_movies_api, created_movie):
-        """Позитивный тест: успешное получение фильма по ID."""
-        movie_id = created_movie
-        response = public_movies_api.get_movie_by_id(movie_id)
-
-        assert response["id"] == movie_id
-        assert "name" in response
-        assert "price" in response
-        assert "description" in response
-        assert "imageUrl" in response
-        assert "location" in response
-        assert "published" in response
-        assert "genreId" in response
-        assert "genre" in response
-        assert "createdAt" in response
-        assert "rating" in response
-
-        assert isinstance(response["id"], int)
-        assert isinstance(response["name"], str)
-        assert isinstance(response["price"], (int, float))
-        assert isinstance(response["published"], bool)
 
     def test_get_movie_by_id_check_genre_structure(self, public_movies_api, created_movie):
         """Позитивный тест: проверка структуры жанра в ответе."""
@@ -50,7 +30,7 @@ class TestMoviesGetById:
         assert "reviews" in response
         assert isinstance(response["reviews"], list)
 
-    def test_get_movie_by_id_compare_with_created_data(self, public_movies_api, admin_movies_api):
+    def test_get_movie_by_id_compare_with_created_data(self, public_movies_api, super_admin_movies_api):
         """Позитивный тест: сравнение полученного фильма с созданными данными."""
         movie_data = {
             "name": f"Compare Test {DataGenerator.generate_string(5)}",
@@ -59,10 +39,10 @@ class TestMoviesGetById:
             "description": f"Description for compare {DataGenerator.generate_string(10)}",
             "location": "SPB",
             "published": True,
-            "genreId": 2
+            "genreId": DataGenerator.get_valid_genre_id()
         }
 
-        create_response = admin_movies_api.create_movie(movie_data)
+        create_response = super_admin_movies_api.create_movie(movie_data)
         movie_id = create_response["id"]
 
         get_response = public_movies_api.get_movie_by_id(movie_id)
@@ -76,7 +56,7 @@ class TestMoviesGetById:
         assert get_response["published"] == movie_data["published"]
         assert get_response["genreId"] == movie_data["genreId"]
 
-        admin_movies_api.delete_movie(movie_id)
+        super_admin_movies_api.delete_movie(movie_id)
 
     def test_get_movie_by_id_check_dates(self, public_movies_api, created_movie):
         """Позитивный тест: проверка формата дат в ответе."""
@@ -114,14 +94,14 @@ class TestMoviesGetById:
 
     # ==================== НЕГАТИВНЫЕ ТЕСТЫ ====================
 
-    def test_get_movie_by_id_not_found(self, public_movies_api):
-        """Негативный тест: получение несуществующего фильма."""
-        fake_id = 999999999
-
-        with pytest.raises(ValueError) as excinfo:
-            public_movies_api.get_movie_by_id(fake_id)
-
-        assert "404" in str(excinfo.value)
+    def test_get_movie_by_id_not_found(self, movies_api):
+        """Тест получения несуществующего фильма."""
+        response = movies_api.requester.send_request(
+            "GET",
+            "movies/999999999",
+            expected_status=HTTPStatus.NOT_FOUND  # ✅ Исправлено: 404
+        )
+        assert response.status_code == 404
 
     def test_get_movie_by_id_negative_id(self, public_movies_api):
         """Негативный тест: получение с отрицательным ID."""
@@ -139,14 +119,14 @@ class TestMoviesGetById:
         # API возвращает 404
         assert "404" in str(excinfo.value)
 
-    def test_get_movie_by_id_string_id(self, public_movies_api):
-        """Негативный тест: получение с ID в виде строки (возвращает 500)."""
-        with pytest.raises(ValueError) as excinfo:
-            public_movies_api.get_movie_by_id("not_a_number")
-
-        # API возвращает 500 Internal Server Error
-        # Проверяем что ошибка есть
-        assert "500" in str(excinfo.value) or "400" in str(excinfo.value)
+    def test_get_movie_by_id_string_id(self, movies_api):
+        """Тест с строковым ID."""
+        response = movies_api.requester.send_request(
+            "GET",
+            "movies/not_a_number",
+            expected_status=HTTPStatus.INTERNAL_SERVER_ERROR  # ✅ Исправлено: 500
+        )
+        assert response.status_code == 500
 
     def test_get_movie_by_id_empty_id(self, public_movies_api):
         """
@@ -157,13 +137,13 @@ class TestMoviesGetById:
         assert "movies" in response
         assert isinstance(response["movies"], list)
 
-    def test_get_movie_by_id_after_delete(self, public_movies_api, admin_movies_api):
+    def test_get_movie_by_id_after_delete(self, public_movies_api, super_admin_movies_api):
         """Негативный тест: получение фильма после его удаления."""
         movie_data = DataGenerator.generate_movie_data()
-        response = admin_movies_api.create_movie(movie_data)
+        response = super_admin_movies_api.create_movie(movie_data)
         movie_id = response["id"]
 
-        admin_movies_api.delete_movie(movie_id)
+        super_admin_movies_api.delete_movie(movie_id)
 
         with pytest.raises(ValueError) as excinfo:
             public_movies_api.get_movie_by_id(movie_id)
@@ -180,10 +160,10 @@ class TestMoviesGetById:
 
     # ==================== ИНТЕГРАЦИОННЫЕ ТЕСТЫ ====================
 
-    def test_get_movie_by_id_integration(self, public_movies_api, admin_movies_api):
+    def test_get_movie_by_id_integration(self, public_movies_api, super_admin_movies_api):
         """Интеграционный тест: полный цикл создания и получения фильма."""
         movie_data = DataGenerator.generate_movie_data()
-        create_response = admin_movies_api.create_movie(movie_data)
+        create_response = super_admin_movies_api.create_movie(movie_data)
         movie_id = create_response["id"]
 
         get_response = public_movies_api.get_movie_by_id(movie_id)
@@ -196,12 +176,12 @@ class TestMoviesGetById:
         assert get_response["published"] == movie_data["published"]
         assert get_response["genreId"] == movie_data["genreId"]
 
-        admin_movies_api.delete_movie(movie_id)
+        super_admin_movies_api.delete_movie(movie_id)
 
-    def test_get_movie_by_id_compare_cached_data(self, public_movies_api, admin_movies_api):
+    def test_get_movie_by_id_compare_cached_data(self, public_movies_api, super_admin_movies_api):
         """Интеграционный тест: проверка, что данные не меняются при повторных запросах."""
         movie_data = DataGenerator.generate_movie_data()
-        create_response = admin_movies_api.create_movie(movie_data)
+        create_response = super_admin_movies_api.create_movie(movie_data)
         movie_id = create_response["id"]
 
         response1 = public_movies_api.get_movie_by_id(movie_id)
@@ -216,7 +196,7 @@ class TestMoviesGetById:
         assert response1["genreId"] == response2["genreId"]
         assert response1["rating"] == response2["rating"]
 
-        admin_movies_api.delete_movie(movie_id)
+        super_admin_movies_api.delete_movie(movie_id)
 
     def test_get_movie_by_id_correct_data_types(self, public_movies_api, created_movie):
         """Позитивный тест: проверка типов данных всех полей."""

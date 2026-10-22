@@ -4,7 +4,9 @@ import json
 import requests
 import logging
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Union, Dict, Any, List
+
+from pydantic import BaseModel
 
 
 class CustomRequester:
@@ -23,37 +25,37 @@ class CustomRequester:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
 
-    def send_request(
-        self,
-        method: str,
-        endpoint: str,
-        data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        expected_status: Optional[int] = None,
-        need_logging: bool = True,
-        base_url: Optional[str] = None
-    ) -> requests.Response:
-        """
-        Универсальный метод для отправки запросов.
-        """
-        # Убираем лишние слэши
-        base = (base_url or self.base_url).rstrip('/')
-        endpoint = endpoint.lstrip('/')
-        url = f"{base}/{endpoint}"
+    def send_request(self, method, endpoint, data=None, params=None,
+                     expected_status=200, need_logging=True, base_url=None, **kwargs):
 
-        response = self.session.request(
-            method,
-            url,
-            json=data,
-            params=params,
-            headers=self.headers
-        )
+        # 1. Выбираем базовый URL: либо переданный, либо дефолтный
+        actual_base_url = base_url.rstrip('/') if base_url else self.base_url
+
+        # 2. Аккуратно склеиваем URL
+        endpoint = endpoint.lstrip('/')
+        url = f"{actual_base_url}/{endpoint}"
+
+        # 3. Превращаем Pydantic-модель в словарь, если нужно
+        if isinstance(data, BaseModel):
+            data = json.loads(data.model_dump_json(exclude_unset=True))
+
+        # 4. Делаем запрос (теперь base_url не попадет в kwargs)
+        response = self.session.request(method, url, json=data, params=params, **kwargs)
 
         if need_logging:
             self.log_request_and_response(response)
 
-        if expected_status is not None and response.status_code != expected_status:
-            raise ValueError(f"Unexpected status code: {response.status_code}. Expected: {expected_status}")
+        # 5. Проверяем статус (добавим поддержку списка статусов)
+        if isinstance(expected_status, (list, tuple, set)):
+            if response.status_code not in expected_status:
+                raise ValueError(
+                    f"Unexpected status code: {response.status_code}. Expected one of: {expected_status}"
+                )
+        elif expected_status is not None:
+            if response.status_code != expected_status:
+                raise ValueError(
+                    f"Unexpected status code: {response.status_code}. Expected: {expected_status}"
+                )
 
         return response
 
